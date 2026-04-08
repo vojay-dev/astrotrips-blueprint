@@ -1,45 +1,107 @@
-Overview
-========
+# AstroTrips Blueprint Example
 
-Welcome to Astronomer! This project was generated after you ran 'astro dev init' using the Astronomer CLI. This readme describes the contents of the project, as well as how to run Apache Airflow on your local machine.
+_todo: add blog post link once it is published._
 
-Project Contents
-================
+## The scenario
 
-Your Astro project contains the following files and folders:
+AstroTrips is a fictional interplanetary travel company. Customers book trips to the Moon, Mars, and Europa. Each booking generates a payment record calculated from a base fare, a planet-specific cost multiplier, and an optional promo code discount. Every day, a pipeline ingests new bookings, aggregates revenue into a daily planet report, and validates data quality. A separate pipeline fetches weather conditions per planet from an external API.
 
-- dags: This folder contains the Python files for your Airflow DAGs. By default, this directory includes one example DAG:
-    - `example_astronauts`: This DAG shows a simple ETL pipeline example that queries the list of astronauts currently in space from the Open Notify API and prints a statement for each astronaut. The DAG uses the TaskFlow API to define tasks in Python, and dynamic task mapping to dynamically print a statement for each astronaut. For more on how this DAG works, see our [Getting started tutorial](https://www.astronomer.io/docs/learn/get-started-with-airflow).
-- Dockerfile: This file contains a versioned Astro Runtime Docker image that provides a differentiated Airflow experience. If you want to execute other commands or overrides at runtime, specify them here.
-- include: This folder contains any additional files that you want to include as part of your project. It is empty by default.
-- packages.txt: Install OS-level packages needed for your project by adding them to this file. It is empty by default.
-- requirements.txt: Install Python packages needed for your project by adding them to this file. It is empty by default.
-- plugins: Add custom or community plugins for your project to this file. It is empty by default.
-- airflow_settings.yaml: Use this local-only file to specify Airflow Connections, Variables, and Pools instead of entering them in the Airflow UI as you develop DAGs in this project.
+The same scenario powers [Astronomer's public Airflow workshops](https://github.com/astronomer/devrel-public-workshops), where the full pipeline is written as traditional Python Dags. This project rebuilds it with [Blueprint](https://github.com/astronomer/blueprint), showing how platform teams can create reusable building blocks that others compose via YAML or the [Astro IDE](https://www.astronomer.io/product/ide/) visual builder.
 
-Deploy Your Project Locally
-===========================
+## Blueprints
 
-Start Airflow on your local machine by running 'astro dev start'.
+All blueprints are defined in `dags/blueprints.py`.
 
-This command will spin up five Docker containers on your machine, each for a different Airflow component:
+| Blueprint | Version(s) | Returns | What it does |
+|-----------|-----------|---------|-------------|
+| **SetupDatabase** | v1 | TaskGroup | Drops and recreates all AstroTrips tables. Optionally seeds sample data (planets, routes, customers, promo codes, bookings, payments). |
+| **IngestBookings** | v1 | single task | Generates N random bookings with matching payments via a Jinja2 SQL template. Configurable `n_bookings` (1 to 100). |
+| **PlanetReport** | v1 | single task | Aggregates bookings into a `daily_planet_report` table using an upsert pattern. Calculates passengers, active/completed trips, gross and net revenue. |
+| **DataQualityCheck** | v1 | single task | Runs column-level checks (null, distinct, min, max) on any table. Uses `extra="forbid"` to catch YAML typos, `Literal` types for check types, and a custom `@field_validator` to require at least one check. |
+| **WeatherIngest** | v1 | TaskGroup | Fetches weather from a fake API for all planets using dynamic task mapping (`.expand()`), then loads results into `planet_weather`. |
+| **WeatherIngestV2** | v2 | TaskGroup | Same as v1, but adds a `max_storm_risk` threshold (0.0 to 1.0) to filter out high-risk readings before loading. |
 
-- Postgres: Airflow's Metadata Database
-- Scheduler: The Airflow component responsible for monitoring and triggering tasks
-- DAG Processor: The Airflow component responsible for parsing DAGs
-- API Server: The Airflow component responsible for serving the Airflow UI and API
-- Triggerer: The Airflow component responsible for triggering deferred tasks
+A project-level `AstroTripsDagArgs` class sets `template_searchpath` so all Dags can find the SQL files in `include/sql/`.
 
-When all five containers are ready the command will open the browser to the Airflow UI at http://localhost:8080/. You should also be able to access your Postgres Database at 'localhost:5432/postgres' with username 'postgres' and password 'postgres'.
+## Dag compositions
 
-Note: If you already have either of the above ports allocated, you can either [stop your existing Docker containers or change the port](https://www.astronomer.io/docs/astro/cli/troubleshoot-locally#ports-are-not-available-for-my-local-airflow-webserver).
+All Dag YAML files are in `dags/`.
 
-Deploy Your Project to Astronomer
-=================================
+| File | Dag ID | Schedule | Steps |
+|------|--------|----------|-------|
+| `setup.dag.yaml` | `astrotrips_setup` | `@once` | `init_database` (SetupDatabase with seed data) |
+| `daily_pipeline.dag.yaml` | `astrotrips_daily_pipeline` | `@daily` | `ingest` > `report` > `validate` |
+| `weather.dag.yaml` | `astrotrips_weather` | `@daily` | `weather` (WeatherIngestV2, max_storm_risk=0.8) |
 
-If you have an Astronomer account, pushing code to a Deployment on Astronomer is simple. For deploying instructions, refer to Astronomer documentation: https://www.astronomer.io/docs/astro/deploy-code/
+## Project structure
 
-Contact
-=======
+```
+dags/
+  blueprints.py              # Blueprint definitions (platform team writes this)
+  loader.py                  # Two-line build_all() entry point
+  setup.dag.yaml             # One-time database initialization
+  daily_pipeline.dag.yaml    # Daily ingest > report > validate
+  weather.dag.yaml           # Daily weather ingestion (v2 with filtering)
+include/
+  sql/
+    schema.sql               # Table and sequence definitions
+    fixtures.sql             # Sample data (planets, routes, customers, etc.)
+    generate.sql             # Jinja2 template for random booking generation
+    report.sql               # Aggregation query with upsert pattern
+    cleanup.sql              # Drop all tables and sequences
+  weather_api.py             # Deterministic fake weather API (hash-seeded RNG)
+blueprint/
+  generated-schemas/         # JSON schemas for Astro IDE (generated via CLI)
+Makefile                     # Convenience commands (run inside scheduler container)
+```
 
-The Astronomer CLI is maintained with love by the Astronomer team. To report a bug or suggest a change, reach out to our support.
+## Getting started
+
+Prerequisites: [Astro CLI](https://www.astronomer.io/docs/astro/cli/install-cli) and Docker.
+
+```bash
+# Start Airflow
+astro dev start
+
+# Open the Airflow UI
+open http://localhost:8080
+
+# Trigger the setup Dag first, then the daily pipeline or weather Dag
+```
+
+## Using the Blueprint CLI
+
+All `blueprint` commands run inside the scheduler container. The Makefile handles this for you:
+
+```bash
+make list                              # List all blueprints
+make describe NAME=data_quality_check  # Show a blueprint's schema
+make lint                              # Validate all Dag YAMLs
+make schemas                           # Generate JSON schemas for Astro IDE
+```
+
+Or run directly:
+
+```bash
+docker exec -it <scheduler-container> blueprint list
+docker exec -it <scheduler-container> blueprint describe weather_ingest
+docker exec -it <scheduler-container> blueprint lint dags/daily_pipeline.dag.yaml
+```
+
+## Publishing blueprints to the Astro IDE
+
+Blueprints do not appear in the Astro IDE visual builder automatically. You publish them intentionally by generating JSON schemas:
+
+```bash
+make schemas
+```
+
+This creates one `.schema.json` file per blueprint in `blueprint/generated-schemas/`. Commit these to Git, and the Astro IDE discovers them. This is a governance feature: you control which building blocks are visible to IDE users.
+
+## Related
+
+- [Blueprint OSS](https://github.com/astronomer/blueprint) (GitHub)
+- [Part 1: The Rise of Abstraction in Data Orchestration](https://www.astronomer.io/blog/the-rise-of-abstraction-in-data-orchestration/)
+- [Part 2: Abstraction with DAG Factory: From Excel to Minecraft](https://www.astronomer.io/blog/abstraction-with-dag-factory-from-excel-to-minecraft/)
+- _todo: add blog post link once it is published._
+- [Astronomer's public Airflow workshops](https://github.com/astronomer/devrel-public-workshops) (same scenario, Python Dags)
