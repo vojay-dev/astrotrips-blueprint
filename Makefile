@@ -45,11 +45,10 @@ lint: ## Lint all Dag YAML files
 
 schemas: ## Generate all JSON schemas for Astro IDE
 	@mkdir -p $(SCHEMA_DIR)
-	$(BLUEPRINT) schema setup_database > $(SCHEMA_DIR)/setup_database.schema.json
-	$(BLUEPRINT) schema ingest_bookings > $(SCHEMA_DIR)/ingest_bookings.schema.json
-	$(BLUEPRINT) schema planet_report > $(SCHEMA_DIR)/planet_report.schema.json
-	$(BLUEPRINT) schema data_quality_check > $(SCHEMA_DIR)/data_quality_check.schema.json
-	$(BLUEPRINT) schema weather_ingest > $(SCHEMA_DIR)/weather_ingest.schema.json
+	@for bp in setup_database ingest_bookings planet_report data_quality_check weather_ingest; do \
+		$(BLUEPRINT) schema $$bp -o /tmp/$$bp.schema.json; \
+		docker cp $(SCHEDULER):/tmp/$$bp.schema.json $(SCHEMA_DIR)/; \
+	done
 	@echo "Schemas written to $(SCHEMA_DIR)/"
 
 clean-schemas: ## Remove generated schemas
