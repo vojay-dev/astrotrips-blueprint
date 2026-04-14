@@ -1,0 +1,81 @@
+2026-04-14T21:52:14.676581Z [warning  ] Astro managed secrets backend is disabled [astronomer.runtime.plugin.AstronomerRuntimePlugin] loc=plugin.py:125
+{                                                                               
+  "additionalProperties": false,                                                
+  "description": "Configuration for data quality validation.",                  
+  "properties": {                                                               
+    "conn_id": {                                                                
+      "description": "Airflow connection ID for DuckDB",                        
+      "title": "Conn Id",                                                       
+      "type": "string"                                                          
+    },                                                                          
+    "table": {                                                                  
+      "description": "Table name to validate",                                  
+      "title": "Table",                                                         
+      "type": "string"                                                          
+    },                                                                          
+    "not_null_columns": {                                                       
+      "default": [],                                                            
+      "description": "Columns that must contain no null values",                
+      "items": {                                                                
+        "type": "string"                                                        
+      },                                                                        
+      "title": "Not Null Columns",                                              
+      "type": "array"                                                           
+    },                                                                          
+    "min_distinct_columns": {                                                   
+      "default": [],                                                            
+      "description": "Columns to check for minimum distinct value count (paralle
+      "items": {                                                                
+        "type": "string"                                                        
+      },                                                                        
+      "title": "Min Distinct Columns",                                          
+      "type": "array"                                                           
+    },                                                                          
+    "min_distinct_counts": {                                                    
+      "default": [],                                                            
+      "description": "Required minimum distinct count per column (parallel to mi
+      "items": {                                                                
+        "type": "integer"                                                       
+      },                                                                        
+      "title": "Min Distinct Counts",                                           
+      "type": "array"                                                           
+    },                                                                          
+    "min_value_columns": {                                                      
+      "default": [],                                                            
+      "description": "Columns to check for a minimum numeric value (parallel to 
+      "items": {                                                                
+        "type": "string"                                                        
+      },                                                                        
+      "title": "Min Value Columns",                                             
+      "type": "array"                                                           
+    },                                                                          
+    "min_values": {                                                             
+      "default": [],                                                            
+      "description": "Minimum allowed value per column (parallel to min_value_co
+      "items": {                                                                
+        "type": "integer"                                                       
+      },                                                                        
+      "title": "Min Values",                                                    
+      "type": "array"                                                           
+    },                                                                          
+    "blueprint": {                                                              
+      "type": "string",                                                         
+      "const": "data_quality_check",                                            
+      "description": "The blueprint template to use"                            
+    },                                                                          
+    "version": {                                                                
+      "type": "integer",                                                        
+      "const": 1,                                                               
+      "description": "The blueprint version"                                    
+    }                                                                           
+  },                                                                            
+  "required": [                                                                 
+    "blueprint",                                                                
+    "version",                                                                  
+    "conn_id",                                                                  
+    "table"                                                                     
+  ],                                                                            
+  "title": "DataQualityCheck",                                                  
+  "type": "object",                                                             
+  "$schema": "http://json-schema.org/draft-07/schema#"                          
+}                                                                               
