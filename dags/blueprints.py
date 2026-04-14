@@ -5,7 +5,6 @@ Platform teams define these; analysts and data scientists compose them via YAML.
 """
 
 import os
-from typing import Literal
 
 from airflow.providers.common.sql.operators.sql import (
     SQLColumnCheckOperator,
@@ -134,14 +133,6 @@ class PlanetReport(Blueprint[PlanetReportConfig]):
 # ---------------------------------------------------------------------------
 
 
-class ColumnCheck(BaseModel):
-    """A single column validation rule."""
-
-    check_type: Literal["null_check", "distinct_check", "min", "max"]
-    column: str = Field(description="Column name to validate")
-    threshold: int = Field(description="Threshold value for the check")
-
-
 class DataQualityCheckConfig(BaseModel):
     """Configuration for data quality validation."""
 
@@ -149,13 +140,26 @@ class DataQualityCheckConfig(BaseModel):
 
     conn_id: str = Field(description="Airflow connection ID for DuckDB")
     table: str = Field(description="Table name to validate")
-    checks: list[ColumnCheck] = Field(description="List of column checks to run")
+    not_null_columns: list[str] = Field(default=[], description="Columns that must contain no null values")
+    min_distinct_columns: list[str] = Field(default=[], description="Columns to check for minimum distinct value count (parallel to min_distinct_counts)")
+    min_distinct_counts: list[int] = Field(default=[], description="Required minimum distinct count per column (parallel to min_distinct_columns)")
+    min_value_columns: list[str] = Field(default=[], description="Columns to check for a minimum numeric value (parallel to min_values)")
+    min_values: list[int] = Field(default=[], description="Minimum allowed value per column (parallel to min_value_columns)")
 
-    @field_validator("checks")
+    @field_validator("min_distinct_counts")
     @classmethod
-    def at_least_one_check(cls, v: list[ColumnCheck]) -> list[ColumnCheck]:
-        if not v:
-            raise ValueError("At least one check is required")
+    def distinct_lengths_match(cls, v: list[int], info) -> list[int]:
+        cols = info.data.get("min_distinct_columns", [])
+        if len(v) != len(cols):
+            raise ValueError("min_distinct_counts must have the same length as min_distinct_columns")
+        return v
+
+    @field_validator("min_values")
+    @classmethod
+    def min_value_lengths_match(cls, v: list[int], info) -> list[int]:
+        cols = info.data.get("min_value_columns", [])
+        if len(v) != len(cols):
+            raise ValueError("min_values must have the same length as min_value_columns")
         return v
 
 
@@ -163,19 +167,16 @@ class DataQualityCheck(Blueprint[DataQualityCheckConfig]):
     """Run column-level data quality checks on a table."""
 
     def render(self, config: DataQualityCheckConfig) -> TaskOrGroup:
-        check_operator_map = {
-            "null_check": "equal_to",
-            "distinct_check": "geq_to",
-            "min": "geq_to",
-            "max": "leq_to",
-        }
-
         column_mapping: dict = {}
-        for check in config.checks:
-            if check.column not in column_mapping:
-                column_mapping[check.column] = {}
-            operator = check_operator_map[check.check_type]
-            column_mapping[check.column][check.check_type] = {operator: check.threshold}
+
+        for column in config.not_null_columns:
+            column_mapping.setdefault(column, {})["null_check"] = {"equal_to": 0}
+
+        for column, count in zip(config.min_distinct_columns, config.min_distinct_counts):
+            column_mapping.setdefault(column, {})["distinct_check"] = {"geq_to": count}
+
+        for column, value in zip(config.min_value_columns, config.min_values):
+            column_mapping.setdefault(column, {})["min"] = {"geq_to": value}
 
         return SQLColumnCheckOperator(
             task_id=self.step_id,

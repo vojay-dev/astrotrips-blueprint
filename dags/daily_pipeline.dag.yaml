@@ -18,13 +18,13 @@ steps:
     depends_on: [report]
     conn_id: duckdb_astrotrips
     table: daily_planet_report
-    checks:
-      - check_type: null_check
-        column: planet_name
-        threshold: 0
-      - check_type: distinct_check
-        column: planet_name
-        threshold: 3
-      - check_type: min
-        column: total_passengers
-        threshold: 1
+    not_null_columns:
+      - planet_name
+    min_distinct_columns:
+      - planet_name
+    min_distinct_counts:
+      - 3
+    min_value_columns:
+      - total_passengers
+    min_values:
+      - 1
